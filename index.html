@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poly-Algo Master Full</title>
+    <style>
+        :root { --drum: #ff0055; --synth: #00f2ff; --bg: #0a0a0f; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 10px; }
+        .app { background: #12121c; border-radius: 25px; padding: 25px; width: 100%; max-width: 550px; box-shadow: 0 0 50px rgba(0,0,0,0.9); border: 1px solid #2a2a3a; }
+        h1 { font-size: 0.9rem; text-align: center; letter-spacing: 5px; color: var(--synth); text-transform: uppercase; margin: 0 0 20px 0; }
+        
+        .viz-box { background: #000; padding: 15px; border-radius: 15px; margin-bottom: 20px; border: 1px solid #222; }
+        .viz-row { display: flex; gap: 4px; height: 12px; margin: 8px 0; min-height: 12px; }
+        .step { flex: 1; background: #1a1a1a; border-radius: 2px; }
+        .step.active-d { background: var(--drum); box-shadow: 0 0 12px var(--drum); }
+        .step.active-s { background: var(--synth); box-shadow: 0 0 12px var(--synth); }
+        
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        label { display: block; font-size: 0.65rem; color: #666; margin-bottom: 4px; text-transform: uppercase; font-weight: bold; }
+        select, input, button { width: 100%; padding: 12px; border-radius: 10px; border: none; background: #1e1e2e; color: white; font-size: 0.85rem; font-family: inherit; }
+        input[type="range"] { height: 6px; cursor: pointer; accent-color: var(--synth); padding: 0; }
+        button { background: #fff; color: #000; font-weight: 900; margin-top: 20px; cursor: pointer; height: 55px; transition: 0.2s; }
+        button:active { transform: scale(0.97); background: var(--synth); }
+        .conv-flash { text-align: center; font-weight: bold; font-size: 0.75rem; height: 20px; margin-bottom: 5px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <div id="flash" class="conv-flash"></div>
+    
+    <div class="viz-box">
+        <label style="color: var(--drum)">Drum Beat</label>
+        <div id="vD" class="viz-row"></div>
+        <label style="color: var(--synth)">Synth Phase</label>
+        <div id="vS" class="viz-row"></div>
+    </div>
+
+    <div class="controls">
+        <div style="grid-column: span 2;">
+            <label>Tempo: <span id="bpmVal" style="color:var(--synth)">120</span> BPM</label>
+            <input type="range" id="bpm" min="40" max="220" value="120">
+        </div>
+        <div>
+            <label>Humeur (Mood)</label>
+            <select id="mood">
+                <option value="happy">Happy (Majeur)</option>
+                <option value="melancolic">Mélancolique (Mineur)</option>
+                <option value="hypnotic" selected>Hypnotique</option>
+                <option value="pentatonic">Pentatonique</option>
+            </select>
+        </div>
+        <div>
+            <label>Texture Synthé</label>
+            <select id="type">
+                <option value="pulse">Pulse (Dry)</option>
+                <option value="analog">Analog Saw</option>
+                <option value="dream">Dream Pad</option>
+                <option value="space">Deep Space</option>
+                <option value="ghost">Ghost Sine</option>
+            </select>
+        </div>
+        <div>
+            <label>Vitesse des Notes</label>
+            <select id="noteDiv">
+                <option value="4">Rondes</option>
+                <option value="2">Blanches</option>
+                <option value="1">Noires</option>
+                <option value="0.5" selected>Croches</option>
+                <option value="0.25">Doubles Croches</option>
+            </select>
+        </div>
+        <div>
+            <label>Signature Drum</label>
+            <select id="sigD"></select>
+        </div>
+        <div>
+            <label>Signature Synth</label>
+            <select id="sigS"></select>
+        </div>
+    </div>
+
+    <button id="btn">LANCER L'EXPÉRIENCE</button>
+</div>
+
+<script>
+let ctx, isPlaying = false, nextTime = 0, bD = 0, bS = 0, scale = [], reverb, delay, fb;
+
+function populate() {
+    const sD = document.getElementById('sigD'), sS = document.getElementById('sigS');
+    for(let i=2; i<=13; i++) { 
+        sD.add(new Option(`${i}/4`, `${i},4`)); 
+        sS.add(new Option(`${i}/4`, `${i},4`)); 
+    }
+    for(let i=2; i<=15; i++) { 
+        sD.add(new Option(`${i}/8`, `${i},8`)); 
+        sS.add(new Option(`${i}/8`, `${i},8`)); 
+    }
+    sD.value = "4,4"; sS.value = "7,8";
+}
+populate();
+
+function getScale(mood) {
+    const roots = [220, 233.08, 246.94, 261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392, 415.3];
+    const root = roots[Math.floor(Math.random() * roots.length)];
+    let intervals = [];
+    switch(mood) {
+        case 'happy': intervals = [0, 2, 4, 5, 7, 9, 11, 12]; break;
+        case 'melancolic': intervals = [0, 2, 3, 5, 7, 8, 10, 12]; break;
+        case 'hypnotic': intervals = [0, 1, 3, 5, 6, 8, 10, 12]; break;
+        case 'pentatonic': intervals = [0, 3, 5, 7, 10, 12]; break;
+    }
+    return intervals.map(i => root * Math.pow(2, i/12));
+}
+
+function setupAudio() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    reverb = ctx.createConvolver();
+    let l = ctx.sampleRate*2, b = ctx.createBuffer(2,l,ctx.sampleRate);
+    for(let i=0; i<2; i++){
+        let d=b.getChannelData(i); 
+        for(let j=0; j<l; j++) d[j]=(Math.random()*2-1)*Math.exp(-j/(ctx.sampleRate*0.5));
+    }
+    reverb.buffer = b; reverb.connect(ctx.destination);
+    delay = ctx.createDelay(); delay.delayTime.value = 0.375;
+    fb = ctx.createGain(); fb.gain.value = 0.4;
+    delay.connect(fb); fb.connect(delay); delay.connect(reverb);
+}
+
+function playPerc(t, isConv, is1) {
+    let o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(isConv ? 200 : (is1 ? 140 : 65), t);
+    o.frequency.exponentialRampToValueAtTime(0.01, t+0.4);
+    g.gain.setValueAtTime(isConv ? 0.7 : (is1 ? 0.4 : 0.1), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+0.4);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+0.4);
+}
+
+function playSynth(t, type, mood, div) {
+    if(Math.random() < 0.1) return;
+    let o = ctx.createOscillator(), g = ctx.createGain();
+    let freq = scale[Math.floor(Math.random()*scale.length)];
+    
+    fb.gain.value = (mood === 'hypnotic') ? 0.6 : 0.35;
+    let dur = parseFloat(div) * (60 / document.getElementById('bpm').value) * 0.8;
+
+    switch(type) {
+        case 'pulse': o.type = 'square'; break;
+        case 'analog': o.type = 'sawtooth'; freq *= 0.5; break;
+        case 'dream': o.type = 'triangle'; break;
+        case 'space': o.type = 'sawtooth'; freq *= 0.5; break;
+        case 'ghost': o.type = 'sine'; freq *= 2; break;
+    }
+
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(delay); g.connect(ctx.destination);
+    o.start(t); o.stop(t + dur);
+}
+
+function buildViz() {
+    const nD = parseInt(document.getElementById('sigD').value.split(',')[0]);
+    const nS = parseInt(document.getElementById('sigS').value.split(',')[0]);
+    document.getElementById('vD').innerHTML = '<div class="step"></div>'.repeat(nD);
+    document.getElementById('vS').innerHTML = '<div class="step"></div>'.repeat(nS);
+}
+
+function scheduler() {
+    while(nextTime < ctx.currentTime + 0.1) {
+        const [nD, dD] = document.getElementById('sigD').value.split(',').map(Number);
+        const [nS, dS] = document.getElementById('sigS').value.split(',').map(Number);
+        const div = document.getElementById('noteDiv').value;
+        const isConv = (bD === 0 && bS === 0);
+
+        if(isConv) {
+            document.getElementById('flash').innerText = "CONVERGENCE";
+            document.getElementById('flash').style.color = "var(--synth)";
+        } else { document.getElementById('flash').innerText = ""; }
+
+        playPerc(nextTime, isConv, bD === 0);
+        playSynth(nextTime, document.getElementById('type').value, document.getElementById('mood').value, div);
+        updateViz(bD, bS);
+        
+        bD = (bD + 1) % nD;
+        bS = (bS + 1) % nS;
+        
+        // Le pas temporel est maintenant dicté par le menu "Vitesse des Notes"
+        nextTime += (60 / document.getElementById('bpm').value) * parseFloat(div);
+    }
+    if(isPlaying) requestAnimationFrame(scheduler);
+}
+
+function updateViz(d, s) {
+    let rD = document.getElementById('vD').children, rS = document.getElementById('vS').children;
+    if(rD[d]) { for(let i=0; i<rD.length; i++) rD[i].className = 'step'+(i===d?' active-d':''); }
+    if(rS[s]) { for(let i=0; i<rS.length; i++) rS[i].className = 'step'+(i===s?' active-s':''); }
+}
+
+document.getElementById('btn').addEventListener('click', async () => {
+    if(!ctx) setupAudio();
+    if(ctx.state === 'suspended') await ctx.resume();
+
+    if(isPlaying) {
+        isPlaying = false; document.getElementById('btn').innerText = "LANCER L'EXPÉRIENCE";
+    } else {
+        scale = getScale(document.getElementById('mood').value);
+        buildViz(); bD=0; bS=0; isPlaying=true;
+        nextTime=ctx.currentTime + 0.05;
+        document.getElementById('btn').innerText = "ARRÊTER"; 
+        scheduler();
+    }
+});
+
+document.getElementById('bpm').oninput = function() { document.getElementById('bpmVal').innerText = this.value; };
+document.getElementById('sigD').onchange = buildViz;
+document.getElementById('sigS').onchange = buildViz;
+buildViz();
+</script>
+</body>
+</html>
+
