@@ -62,12 +62,12 @@
             </select>
         </div>
         <div>
-            <label>Vitesse des Notes</label>
+            <label>Vitesse Globale</label>
             <select id="noteDiv">
                 <option value="4">Rondes</option>
                 <option value="2">Blanches</option>
-                <option value="1">Noires</option>
-                <option value="0.5" selected>Croches</option>
+                <option value="1" selected>Noires</option>
+                <option value="0.5">Croches</option>
                 <option value="0.25">Doubles Croches</option>
             </select>
         </div>
@@ -85,7 +85,9 @@
 </div>
 
 <script>
-let ctx, isPlaying = false, nextTime = 0, bD = 0, bS = 0, scale = [], reverb, delay, fb;
+let ctx, isPlaying = false, scale = [], reverb, delay, fb;
+// Variables pour gérer les deux timelines séparément
+let nextTimeD = 0, nextTimeS = 0, bD = 0, bS = 0;
 
 function populate() {
     const sD = document.getElementById('sigD'), sS = document.getElementById('sigS');
@@ -142,7 +144,6 @@ function playSynth(t, type, mood, div) {
     if(Math.random() < 0.1) return;
     let o = ctx.createOscillator(), g = ctx.createGain();
     let freq = scale[Math.floor(Math.random()*scale.length)];
-    
     fb.gain.value = (mood === 'hypnotic') ? 0.6 : 0.35;
     let dur = parseFloat(div) * (60 / document.getElementById('bpm').value) * 0.8;
 
@@ -169,33 +170,49 @@ function buildViz() {
 }
 
 function scheduler() {
-    while(nextTime < ctx.currentTime + 0.1) {
-        const [nD, dD] = document.getElementById('sigD').value.split(',').map(Number);
-        const [nS, dS] = document.getElementById('sigS').value.split(',').map(Number);
-        const div = document.getElementById('noteDiv').value;
-        const isConv = (bD === 0 && bS === 0);
+    const bpm = document.getElementById('bpm').value;
+    const globalDiv = parseFloat(document.getElementById('noteDiv').value);
+    
+    // Récupération des dénominateurs (4 ou 8)
+    const [nD, denD] = document.getElementById('sigD').value.split(',').map(Number);
+    const [nS, denS] = document.getElementById('sigS').value.split(',').map(Number);
 
+    // Calcul de l'intervalle de temps (en secondes) pour chaque piste
+    // Si den=8, on divise par 2 la durée d'une noire pour obtenir une croche
+    const stepD = (60 / bpm) * globalDiv * (4 / denD);
+    const stepS = (60 / bpm) * globalDiv * (4 / denS);
+
+    // Boucle pour les Drums
+    while(nextTimeD < ctx.currentTime + 0.1) {
+        const isConv = (bD === 0 && bS === 0);
         if(isConv) {
             document.getElementById('flash').innerText = "CONVERGENCE";
             document.getElementById('flash').style.color = "var(--synth)";
-        } else { document.getElementById('flash').innerText = ""; }
+        } else if (bD === 0) { document.getElementById('flash').innerText = ""; }
 
-        playPerc(nextTime, isConv, bD === 0);
-        playSynth(nextTime, document.getElementById('type').value, document.getElementById('mood').value, div);
-        updateViz(bD, bS);
-        
+        playPerc(nextTimeD, isConv, bD === 0);
+        updateVizD(bD);
         bD = (bD + 1) % nD;
-        bS = (bS + 1) % nS;
-        
-        // Le pas temporel est maintenant dicté par le menu "Vitesse des Notes"
-        nextTime += (60 / document.getElementById('bpm').value) * parseFloat(div);
+        nextTimeD += stepD;
     }
+
+    // Boucle pour le Synthé
+    while(nextTimeS < ctx.currentTime + 0.1) {
+        playSynth(nextTimeS, document.getElementById('type').value, document.getElementById('mood').value, globalDiv * (4 / denS));
+        updateVizS(bS);
+        bS = (bS + 1) % nS;
+        nextTimeS += stepS;
+    }
+
     if(isPlaying) requestAnimationFrame(scheduler);
 }
 
-function updateViz(d, s) {
-    let rD = document.getElementById('vD').children, rS = document.getElementById('vS').children;
+function updateVizD(d) {
+    let rD = document.getElementById('vD').children;
     if(rD[d]) { for(let i=0; i<rD.length; i++) rD[i].className = 'step'+(i===d?' active-d':''); }
+}
+function updateVizS(s) {
+    let rS = document.getElementById('vS').children;
     if(rS[s]) { for(let i=0; i<rS.length; i++) rS[i].className = 'step'+(i===s?' active-s':''); }
 }
 
@@ -208,7 +225,8 @@ document.getElementById('btn').addEventListener('click', async () => {
     } else {
         scale = getScale(document.getElementById('mood').value);
         buildViz(); bD=0; bS=0; isPlaying=true;
-        nextTime=ctx.currentTime + 0.05;
+        nextTimeD = ctx.currentTime + 0.05;
+        nextTimeS = ctx.currentTime + 0.05;
         document.getElementById('btn').innerText = "ARRÊTER"; 
         scheduler();
     }
@@ -221,4 +239,3 @@ buildViz();
 </script>
 </body>
 </html>
-
